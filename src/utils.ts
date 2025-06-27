@@ -39,3 +39,13 @@ export function generateBearerToken(apiKey: string, publicKey: string): string {
   );
   return encrypted.toString('base64');
 }
+
+/**
+ * Garante que a chave pública está no formato PEM correto.
+ * @param key Chave pública (com ou sem delimitadores)
+ * @returns Chave pública em formato PEM
+ */
+export function formatPublicKey(key: string): string {
+  if (key.includes('BEGIN PUBLIC KEY')) return key;
+  return `-----BEGIN PUBLIC KEY-----\n${key.match(/.{1,64}/g)?.join('\n')}\n-----END PUBLIC KEY-----`;
+}

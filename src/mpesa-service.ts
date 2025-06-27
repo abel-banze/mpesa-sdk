@@ -1,6 +1,6 @@
 // src/MpesaService.ts
 import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios';
-import { encodePublicKeyToBase64, generateBearerToken } from './utils';
+import { encodePublicKeyToBase64, generateBearerToken, formatPublicKey } from './utils';
 import {
   MpesaAPIConfig,
   MpesaC2BResponse,
@@ -55,8 +55,8 @@ export class MpesaService {
       timeout: config.timeout || 30000 // Default to 30 seconds
     };
 
-    // Gera o Bearer token criptografando o apiKey com a publicKey
-    this.encodedPublicKey = generateBearerToken(this.config.apiKey, this.config.publicKey);
+    // Gera o Bearer token criptografando o apiKey com a publicKey (sempre no formato PEM)
+    this.encodedPublicKey = generateBearerToken(this.config.apiKey, formatPublicKey(this.config.publicKey));
 
     // Construct the baseURL including the host and port
     this.httpClient = axios.create({
@@ -139,14 +139,10 @@ export class MpesaService {
     };
 
     const headers = {
-      'Authorization': `Bearer ${this.config.publicKey}`,
+      'Authorization': `Bearer ${this.encodedPublicKey}`,
       'Origin': this.config.origin,
       'Content-Type': 'application/json',
     };
-
-    // Log detalhado para depuração
-    console.log('C2B Request - Payload:', JSON.stringify(payload, null, 2));
-    console.log('C2B Request - Headers:', JSON.stringify(headers, null, 2));
 
     try {
       const response: AxiosResponse<MpesaC2BResponse> = await this.httpClient.post('/ipg/v1x/c2bPayment/singleStage/', payload, {
@@ -194,7 +190,6 @@ export class MpesaService {
         headers: {
           'Authorization': `Bearer ${this.encodedPublicKey}`,
           'Origin': this.config.origin,
-          'X-Api-Key': this.config.apiKey
         }
       });
 
