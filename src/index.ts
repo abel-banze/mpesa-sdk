@@ -37,10 +37,10 @@ async function runExample() {
 
     console.log('\n--- Initiating C2B Payment (Customer to Business) ---');
     // IMPORTANT: Use test MSISDNs provided by M-Pesa for sandbox environment
-    const customerMsisdnC2B = '258845563976'; // REPLACE with a valid sandbox test MSISDN
+    const customerMsisdnC2B = '258874088005'; // REPLACE with a valid sandbox test MSISDN
     const amountC2B = 10.00;
     const trxRefC2B = 'Metricas';
-    const thirdPartyRefC2B = generateUniqueReference('C2B');
+    const thirdPartyRefC2B = 'D3B9C2';
 
     console.log(`C2B Payload: Amount=${amountC2B}, MSISDN=${customerMsisdnC2B}, Ref=${trxRefC2B}`);
     const c2bResponse = await mpesa.initiateC2BPayment(amountC2B, customerMsisdnC2B, trxRefC2B, thirdPartyRefC2B);

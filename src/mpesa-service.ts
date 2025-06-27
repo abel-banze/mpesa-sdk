@@ -77,6 +77,8 @@ export class MpesaService {
    * @throws MpesaError
    */
   private handleMpesaError(error: AxiosError<MpesaBaseResponse> | Error, context: string): never {
+    
+    console.log('local error: ', error)
     let httpStatus: number = 500;
     let mpesaCode: string = 'INS-1';
     let mpesaDesc: string = 'Internal Error or Unknown API Response';
