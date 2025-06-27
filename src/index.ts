@@ -1,32 +1,30 @@
 // src/index.ts
-import { MpesaService } from './mpesa-service';
-import { MpesaAPIConfig } from './types';
+import { MpesaService, MpesaError } from './mpesa-service';
+import { MpesaAPIConfig, MpesaB2BResponse, B2BPaymentPayload } from './types';
 import { generateUniqueReference } from './utils';
 
-// Re-exporta a classe principal e os tipos/utilitários que podem ser úteis para o usuário do SDK
-export { MpesaService, MpesaAPIConfig, generateUniqueReference };
+// Re-export for easier consumption
+export { MpesaService, MpesaAPIConfig, generateUniqueReference, MpesaError, MpesaB2BResponse, B2BPaymentPayload };
 
-// Opcional: Para uso em desenvolvimento ou exemplos de teste rápido
-// Carrega as variáveis de ambiente aqui para que o exemplo funcione,
-// mas em uma aplicação real, o usuário do SDK passaria a config explicitamente.
+// Load environment variables from .env file
 import * as dotenv from 'dotenv';
 dotenv.config();
 
-// Exemplo de uso (apenas para testar o SDK localmente)
 async function runExample() {
   const config: MpesaAPIConfig = {
     apiKey: process.env.MPESA_API_KEY!,
     publicKey: process.env.MPESA_PUBLIC_KEY!,
     serviceProviderCode: process.env.MPESA_SERVICE_PROVIDER_CODE!,
     origin: process.env.MPESA_ORIGIN!,
-    apiHost: process.env.MPESA_API_HOST!,
-    timeout: 60000 // 60 segundos
+    apiHost: process.env.MPESA_API_HOST!, // Pode ser sobrescrito pelo env
+    timeout: 60000, // 60 seconds timeout for requests
+    env: process.env.MPESA_ENV as 'sandbox' | 'live' // Novo campo para ambiente
   };
 
-  // Verificação básica de variáveis de ambiente
+  // Basic validation of environment variables
   for (const key in config) {
     if (key !== 'timeout' && !config[key as keyof MpesaAPIConfig]) {
-      console.error(`Erro: Variável de ambiente ${key.toUpperCase()} não definida. Por favor, verifique seu arquivo .env.`);
+      console.error(`Error: Environment variable ${key.toUpperCase()} not defined. Please check your .env file.`);
       process.exit(1);
     }
   }
@@ -34,56 +32,98 @@ async function runExample() {
   const mpesa = new MpesaService(config);
 
   try {
-    console.log('--- Teste de Obtenção de Token ---');
-    const token = await mpesa.getAccessToken();
-    console.log('Token obtido:', token.substring(0, 10) + '...'); // Mostra apenas o início do token
+    // --- Nenhuma chamada explícita para getAccessToken é necessária aqui ---
+    console.log('--- Public Key sendo usada diretamente como token de acesso ---');
 
-    console.log('\n--- Teste de Pagamento C2B ---');
-    const customerMsisdn = '25884xxxxxxx'; // Use um número válido para o ambiente de teste/sandbox
-    const amountC2B = 100.00;
-    const trxRefC2B = generateUniqueReference('C2B');
-    const thirdPartyRefC2B = generateUniqueReference('TPC2B');
+    console.log('\n--- Initiating C2B Payment (Customer to Business) ---');
+    // IMPORTANT: Use test MSISDNs provided by M-Pesa for sandbox environment
+    const customerMsisdnC2B = '258874088005'; // REPLACE with a valid sandbox test MSISDN
+    const amountC2B = 10.00;
+    const trxRefC2B = 'T12344C';
+    const thirdPartyRefC2B = '0UEM53';
 
-    const c2bResponse = await mpesa.initiateC2BPayment(amountC2B, customerMsisdn, trxRefC2B, thirdPartyRefC2B);
-    console.log('Resposta C2B:', c2bResponse);
+    console.log(`C2B Payload: Amount=${amountC2B}, MSISDN=${customerMsisdnC2B}, Ref=${trxRefC2B}`);
+    const c2bResponse = await mpesa.initiateC2BPayment(amountC2B, customerMsisdnC2B, trxRefC2B, thirdPartyRefC2B);
+    console.log('C2B Payment Response:', c2bResponse);
 
-    // Dê um pequeno tempo antes de consultar para a transação ser processada
+    // Wait a bit before querying, as C2B might be asynchronous
     await new Promise(resolve => setTimeout(resolve, 5000));
 
-    console.log('\n--- Teste de Consulta de Transação (C2B) ---');
-    const queryResponseC2B = await mpesa.queryTransactionStatus(c2bResponse.output_TransactionID, thirdPartyRefC2B);
-    console.log('Resposta da Consulta C2B:', queryResponseC2B);
+    console.log('\n--- Querying C2B Transaction Status ---');
+    if (c2bResponse.output_TransactionID) {
+      console.log(`Querying Transaction ID: ${c2bResponse.output_TransactionID}`);
+      const queryResponseC2B = await mpesa.queryTransactionStatus(c2bResponse.output_TransactionID, thirdPartyRefC2B);
+      console.log('C2B Transaction Query Response:', queryResponseC2B);
+    } else {
+      console.warn('C2B transaction ID not available in response for query.');
+    }
 
-    console.log('\n--- Teste de Pagamento B2C (Exemplo) ---');
-    const receiverMsisdn = '25884yyyyyyy'; // Outro número válido para o ambiente de teste/sandbox
-    const amountB2C = 50.00;
+
+    console.log('\n--- Initiating B2C Payment (Business to Customer) ---');
+    // IMPORTANT: Use test MSISDNcls provided by M-Pesa for sandbox environment
+    const receiverMsisdnB2C = '25884yyyyyyy'; // REPLACE with a valid sandbox test MSISDN
+    const amountB2C = 5.00;
     const trxRefB2C = generateUniqueReference('B2C');
     const thirdPartyRefB2C = generateUniqueReference('TPB2C');
 
-    const b2cResponse = await mpesa.initiateB2CPayment(amountB2C, receiverMsisdn, trxRefB2C, thirdPartyRefB2C);
-    console.log('Resposta B2C:', b2cResponse);
+    console.log(`B2C Payload: Amount=${amountB2C}, MSISDN=${receiverMsisdnB2C}, Ref=${trxRefB2C}`);
+    const b2cResponse = await mpesa.initiateB2CPayment(amountB2C, receiverMsisdnB2C, trxRefB2C, thirdPartyRefB2C);
+    console.log('B2C Payment Response:', b2cResponse);
 
-    // Dê um pequeno tempo antes de consultar para a transação ser processada
+    // Wait a bit before querying
     await new Promise(resolve => setTimeout(resolve, 5000));
 
-    console.log('\n--- Teste de Consulta de Transação (B2C) ---');
-    const queryResponseB2C = await mpesa.queryTransactionStatus(b2cResponse.output_TransactionID, thirdPartyRefB2C);
-    console.log('Resposta da Consulta B2C:', queryResponseB2C);
+    console.log('\n--- Querying B2C Transaction Status ---');
+    if (b2cResponse.output_TransactionID) {
+      console.log(`Querying Transaction ID: ${b2cResponse.output_TransactionID}`);
+      const queryResponseB2C = await mpesa.queryTransactionStatus(b2cResponse.output_TransactionID, thirdPartyRefB2C);
+      console.log('B2C Transaction Query Response:', queryResponseB2C);
+    } else {
+      console.warn('B2C transaction ID not available in response for query.');
+    }
 
-    // Se quiser testar reversão, use um TransactionID válido de uma transação anterior
-    // console.log('\n--- Teste de Reversão de Transação (Exemplo) ---');
-    // const originalTransactionToReverse = 'MPA_ID_DA_TRANSACAO_A_REVERTER';
-    // const reversalAmount = 25.00;
-    // const reversalThirdPartyRef = generateUniqueReference('REVERSAL');
-    // const reversalResponse = await mpesa.reverseTransaction(originalTransactionToReverse, reversalAmount, reversalThirdPartyRef);
-    // console.log('Resposta da Reversão:', reversalResponse);
+    // --- Exemplo de B2B ---
+    console.log('\n--- Initiating B2B Payment (Business to Business) ---');
+    const primaryPartyCodeB2B = 'COMPANY001'; // Código da empresa que envia
+    const recipientPartyCodeB2B = 'COMPANY002'; // Código da empresa que recebe
+    const amountB2B = 200.00;
+    const trxRefB2B = generateUniqueReference('B2B');
+    const thirdPartyRefB2B = generateUniqueReference('TPB2B');
+    const paymentServicesB2B = 'BusinessToBusinessTransfer';
+    console.log(`B2B Payload: Amount=${amountB2B}, From=${primaryPartyCodeB2B}, To=${recipientPartyCodeB2B}, Ref=${trxRefB2B}`);
+    const b2bResponse = await mpesa.initiateB2BPayment(amountB2B, primaryPartyCodeB2B, recipientPartyCodeB2B, trxRefB2B, thirdPartyRefB2B, paymentServicesB2B);
+    console.log('B2B Payment Response:', b2bResponse);
+
+    // --- Example of a Reversal (Uncomment to test) ---
+    // console.log('\n--- Attempting to Reverse a Transaction ---');
+    // const originalTransactionIdToReverse = 'MPA_TRANS_ID_FROM_PREVIOUS_SUCCESSFUL_C2B'; // Replace with an actual transaction ID that can be reversed in sandbox
+    // const reversalAmount = 5.00;
+    // const reversalThirdPartyRef = generateUniqueReference('REV');
+    // console.log(`Reversal Payload: Original Trx ID=${originalTransactionIdToReverse}, Amount=${reversalAmount}, Ref=${reversalThirdPartyRef}`);
+    // const reversalResponse = await mpesa.reverseTransaction(originalTransactionIdToReverse, reversalAmount, reversalThirdPartyRef);
+    // console.log('Reversal Response:', reversalResponse);
 
   } catch (error) {
-    console.error('\nErro na execução do SDK de exemplo:', error);
+    if (error instanceof MpesaError) {
+      console.error('\n--- M-Pesa API Error Details ---');
+      console.error(`  Message: ${error.message}`);
+      console.error(`  M-Pesa Code: ${error.details.code}`);
+      console.error(`  M-Pesa Description: ${error.details.description}`);
+      console.error(`  HTTP Status: ${error.details.httpStatus}`);
+      if (error.details.transactionId) console.error(`  Transaction ID: ${error.details.transactionId}`);
+      if (error.details.conversationId) console.error(`  Conversation ID: ${error.details.conversationId}`);
+      if (error.details.thirdPartyReference) console.error(`  Third Party Reference: ${error.details.thirdPartyReference}`);
+    } else {
+      console.error('\n--- Unexpected Error ---');
+      console.error('  Error:', error);
+      if (error instanceof Error) {
+        console.error('  Stack:', error.stack);
+      }
+    }
   }
 }
 
-// Executa o exemplo se o arquivo for o ponto de entrada principal
+// Run the example when the script is executed directly
 if (require.main === module) {
   runExample();
 }
