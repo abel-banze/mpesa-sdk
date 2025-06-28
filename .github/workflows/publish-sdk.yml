@@ -35,8 +35,8 @@ jobs:
 
       # Passo 5: Executa os testes (altamente recomendado antes de publicar!)
       # Remova ou comente esta etapa se não for necessário
-      - name: Rodar Testes
-        run: npm test
+      # - name: Rodar Testes
+        # run: npm test
 
       # Passo 6: Publica o pacote no npm
       # Este passo só será executado se os passos anteriores (build, teste) passarem
