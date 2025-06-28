@@ -1,6 +1,6 @@
 {
   "name": "mpesa-mz-sdk",
-  "version": "1.0.3",
+  "version": "1.2.0",
   "description": "SDK para integração com a API M-Pesa de Moçambique",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

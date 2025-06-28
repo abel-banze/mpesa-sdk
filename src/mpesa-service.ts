@@ -14,7 +14,19 @@ import {
   MpesaReversalResponse,
   ReversalPaymentPayload,
   MpesaBaseResponse,
-  MpesaErrorDetail
+  MpesaErrorDetail,
+  C2BArgs,
+  B2CArgs,
+  B2BArgs,
+  QueryArgs,
+  ReversalArgs,
+  MpesaResponse,
+  C2BResponseData,
+  B2CResponseData,
+  B2BResponseData,
+  QueryResponseData,
+  ReversalResponseData,
+  MPESA_ERROR_MESSAGES
 } from './types';
 
 /**
@@ -47,6 +59,8 @@ export class MpesaService {
       apiHost = 'api.sandbox.vm.co.mz:18352';
     } else if (config.env === 'live') {
       apiHost = 'api.vm.co.mz:18352';
+    } else if (!apiHost) {
+      throw new Error('É necessário definir o ambiente (env: "sandbox" ou "live") ou fornecer apiHost.');
     }
 
     this.config = {
@@ -81,7 +95,7 @@ export class MpesaService {
     console.log('local error: ', error)
     let httpStatus: number = 500;
     let mpesaCode: string = 'INS-1';
-    let mpesaDesc: string = 'Internal Error or Unknown API Response';
+    let mpesaDesc: string = MPESA_ERROR_MESSAGES['INS-1'] || 'Internal Error';
     let transactionId: string | undefined;
     let conversationId: string | undefined;
     let thirdPartyReference: string | undefined;
@@ -91,14 +105,17 @@ export class MpesaService {
       httpStatus = error.response.status;
       if (error.response.data) {
         mpesaCode = error.response.data.output_ResponseCode || mpesaCode;
-        mpesaDesc = error.response.data.output_ResponseDesc || mpesaDesc;
+        // Usar mensagem descritiva específica da M-Pesa se disponível
+        mpesaDesc = MPESA_ERROR_MESSAGES[mpesaCode] || error.response.data.output_ResponseDesc || mpesaDesc;
         transactionId = error.response.data.output_TransactionID;
         conversationId = error.response.data.output_ConversationID;
         thirdPartyReference = error.response.data.output_ThirdPartyReference;
       }
-      errorMessage = `M-Pesa API Error [${context}]: ${mpesaDesc} (Code: ${mpesaCode}, HTTP: ${httpStatus})`;
+      errorMessage = `M-Pesa ${context} Error: ${mpesaDesc} (Code: ${mpesaCode}, HTTP: ${httpStatus})`;
     } else {
-      errorMessage = `Network or Unknown Error [${context}]: ${error.message}`;
+      // Para erros de rede ou outros erros não relacionados à API
+      const networkErrorDesc = MPESA_ERROR_MESSAGES['INS-27'] || 'Network error';
+      errorMessage = `M-Pesa ${context} Error: ${networkErrorDesc} - ${error.message}`;
     }
 
     const errorDetails: MpesaErrorDetail = {
@@ -114,29 +131,44 @@ export class MpesaService {
     throw new MpesaError(errorMessage, errorDetails);
   }
 
-  // --- getAccessToken method is REMOVED as Public Key acts as the token ---
-  // The 'token' (encoded Public Key) will be directly used in transaction headers.
+  /**
+   * Helper method to transform M-Pesa API responses into a clean, readable format.
+   * @param response The raw M-Pesa API response
+   * @param context The operation context (C2B, B2C, B2B, Query, Reversal)
+   * @returns A clean, readable response object
+   */
+  private transformResponse<T>(
+    response: MpesaBaseResponse, 
+    context: string,
+    transformData: (response: MpesaBaseResponse) => T
+  ): MpesaResponse<T> {
+    const isSuccess = response.output_ResponseCode === 'INS-0';
+    
+    return {
+      status: isSuccess ? 'success' : 'error',
+      message: response.output_ResponseDesc || 'No description provided',
+      data: isSuccess ? transformData(response) : undefined,
+      code: response.output_ResponseCode,
+      httpStatus: isSuccess ? 200 : 400,
+      transactionId: response.output_TransactionID,
+      conversationId: response.output_ConversationID,
+      thirdPartyReference: response.output_ThirdPartyReference,
+      timestamp: new Date().toISOString()
+    };
+  }
 
   /**
    * Initiates a C2B (Customer to Business) transaction.
-   * @param amount The transaction amount.
-   * @param customerMsisdn The M-Pesa customer's phone number (e.g., "25884xxxxxxx").
-   * @param transactionReference A unique reference for the transaction.
-   * @param thirdPartyReference A third-party reference, if applicable.
-   * @returns M-Pesa API response for the C2B transaction.
+   * @param args Object containing amount, number, transactionReference, thirdPartyReference
+   * @returns Clean, readable M-Pesa response for the C2B transaction.
    * @throws MpesaError if the C2B transaction fails.
    */
-  public async initiateC2BPayment(
-    amount: number,
-    customerMsisdn: string,
-    transactionReference: string,
-    thirdPartyReference: string
-  ): Promise<MpesaC2BResponse> {
+  public async c2b(args: C2BArgs): Promise<MpesaResponse<C2BResponseData>> {
     const payload: C2BPaymentPayload = {
-      input_Amount: amount.toFixed(2),
-      input_CustomerMSISDN: customerMsisdn,
-      input_ThirdPartyReference: thirdPartyReference,
-      input_TransactionReference: transactionReference,
+      input_Amount: args.amount.toFixed(2),
+      input_CustomerMSISDN: args.number,
+      input_ThirdPartyReference: args.thirdPartyReference,
+      input_TransactionReference: args.transactionReference,
       input_ServiceProviderCode: this.config.serviceProviderCode,
     };
 
@@ -146,14 +178,27 @@ export class MpesaService {
       'Content-Type': 'application/json',
     };
 
+    // Log detalhado para depuração
+    console.log('C2B Request - Payload:', JSON.stringify(payload, null, 2));
+    console.log('C2B Request - Headers:', JSON.stringify(headers, null, 2));
+
     try {
       const response: AxiosResponse<MpesaC2BResponse> = await this.httpClient.post('/ipg/v1x/c2bPayment/singleStage/', payload, {
         headers
       });
 
+      // Verificar se a resposta é de sucesso
       if (response.data.output_ResponseCode === 'INS-0') {
-        return response.data;
+        return this.transformResponse(response.data, 'C2B', (data) => ({
+          transactionId: data.output_TransactionID || '',
+          conversationId: data.output_ConversationID || '',
+          thirdPartyReference: data.output_ThirdPartyReference || '',
+          amount: args.amount.toFixed(2),
+          customerMsisdn: args.number,
+          transactionReference: args.transactionReference
+        }));
       } else {
+        // Lançar erro para respostas não bem-sucedidas
         this.handleMpesaError({ response: { status: response.status, data: response.data } } as AxiosError<MpesaBaseResponse>, 'C2B');
       }
     } catch (error: any) {
@@ -163,28 +208,18 @@ export class MpesaService {
 
   /**
    * Initiates a B2C (Business to Customer) transaction.
-   * @param amount The amount to be paid.
-   * @param customerMsisdn The M-Pesa customer's phone number who will receive the payment.
-   * @param transactionReference A unique reference for the transaction.
-   * @param thirdPartyReference A third-party reference, if applicable.
-   * @param paymentServices Payment service type (e.g., "BusinessPayBill").
-   * @returns M-Pesa API response for the B2C transaction.
+   * @param args Object containing amount, number, transactionReference, thirdPartyReference, paymentServices
+   * @returns Clean, readable M-Pesa response for the B2C transaction.
    * @throws MpesaError if the B2C transaction fails.
    */
-  public async initiateB2CPayment(
-    amount: number,
-    customerMsisdn: string,
-    transactionReference: string,
-    thirdPartyReference: string,
-    paymentServices: string = "BusinessPayBill"
-  ): Promise<MpesaB2CResponse> {
+  public async b2c(args: B2CArgs): Promise<MpesaResponse<B2CResponseData>> {
     const payload: B2CPaymentPayload = {
-      input_Amount: amount.toFixed(2),
-      input_CustomerMsisdn: customerMsisdn,
-      input_ThirdPartyReference: thirdPartyReference,
-      input_TransactionReference: transactionReference,
+      input_Amount: args.amount.toFixed(2),
+      input_CustomerMsisdn: args.number,
+      input_ThirdPartyReference: args.thirdPartyReference,
+      input_TransactionReference: args.transactionReference,
       input_ServiceProviderCode: this.config.serviceProviderCode,
-      input_PaymentServices: paymentServices,
+      input_PaymentServices: args.paymentServices || "BusinessPayBill",
     };
 
     try {
@@ -192,12 +227,25 @@ export class MpesaService {
         headers: {
           'Authorization': `Bearer ${this.encodedPublicKey}`,
           'Origin': this.config.origin,
+          'X-Api-Key': this.config.apiKey
         }
       });
 
+      // Verificar se a resposta é de sucesso
       if (response.data.output_ResponseCode === 'INS-0') {
-        return response.data;
+        return this.transformResponse(response.data, 'B2C', (data) => ({
+          transactionId: data.output_TransactionID || '',
+          conversationId: data.output_ConversationID || '',
+          thirdPartyReference: data.output_ThirdPartyReference || '',
+          amount: args.amount.toFixed(2),
+          customerMsisdn: args.number,
+          transactionReference: args.transactionReference,
+          recipientFirstName: (data as MpesaB2CResponse).output_RecipientFirstName,
+          recipientLastName: (data as MpesaB2CResponse).output_RecipientLastName,
+          settlementAmount: (data as MpesaB2CResponse).output_SettlementAmount
+        }));
       } else {
+        // Lançar erro para respostas não bem-sucedidas
         this.handleMpesaError({ response: { status: response.status, data: response.data } } as AxiosError<MpesaBaseResponse>, 'B2C');
       }
     } catch (error: any) {
@@ -207,31 +255,19 @@ export class MpesaService {
 
   /**
    * Initiates a B2B (Business to Business) transaction.
-   * @param amount O valor da transação.
-   * @param primaryPartyCode Código da empresa que envia.
-   * @param recipientPartyCode Código da empresa que recebe.
-   * @param transactionReference Referência única da transação.
-   * @param thirdPartyReference Referência de terceiro.
-   * @param paymentServices Tipo de serviço de pagamento (ex: "BusinessToBusinessTransfer").
-   * @returns Resposta da API M-Pesa para a transação B2B.
-   * @throws MpesaError se a transação falhar.
+   * @param args Object containing amount, primaryPartyCode, recipientPartyCode, transactionReference, thirdPartyReference, paymentServices
+   * @returns Clean, readable M-Pesa response for the B2B transaction.
+   * @throws MpesaError if the B2B transaction fails.
    */
-  public async initiateB2BPayment(
-    amount: number,
-    primaryPartyCode: string,
-    recipientPartyCode: string,
-    transactionReference: string,
-    thirdPartyReference: string,
-    paymentServices: string = "BusinessToBusinessTransfer"
-  ): Promise<MpesaB2BResponse> {
+  public async b2b(args: B2BArgs): Promise<MpesaResponse<B2BResponseData>> {
     const payload: B2BPaymentPayload = {
-      input_Amount: amount.toFixed(2),
-      input_PrimaryPartyCode: primaryPartyCode,
-      input_RecipientPartyCode: recipientPartyCode,
-      input_ThirdPartyReference: thirdPartyReference,
-      input_TransactionReference: transactionReference,
+      input_Amount: args.amount.toFixed(2),
+      input_PrimaryPartyCode: args.primaryPartyCode,
+      input_RecipientPartyCode: args.recipientPartyCode,
+      input_ThirdPartyReference: args.thirdPartyReference,
+      input_TransactionReference: args.transactionReference,
       input_ServiceProviderCode: this.config.serviceProviderCode,
-      input_PaymentServices: paymentServices,
+      input_PaymentServices: args.paymentServices || "BusinessToBusinessTransfer",
     };
 
     try {
@@ -243,9 +279,20 @@ export class MpesaService {
         }
       });
 
+      // Verificar se a resposta é de sucesso
       if (response.data.output_ResponseCode === 'INS-0') {
-        return response.data;
+        return this.transformResponse(response.data, 'B2B', (data) => ({
+          transactionId: data.output_TransactionID || '',
+          conversationId: data.output_ConversationID || '',
+          thirdPartyReference: data.output_ThirdPartyReference || '',
+          amount: args.amount.toFixed(2),
+          primaryPartyCode: args.primaryPartyCode,
+          recipientPartyCode: args.recipientPartyCode,
+          transactionReference: args.transactionReference,
+          settlementAmount: (data as MpesaB2BResponse).output_SettlementAmount
+        }));
       } else {
+        // Lançar erro para respostas não bem-sucedidas
         this.handleMpesaError({ response: { status: response.status, data: response.data } } as AxiosError<MpesaBaseResponse>, 'B2B');
       }
     } catch (error: any) {
@@ -255,19 +302,15 @@ export class MpesaService {
 
   /**
    * Queries the status of an M-Pesa transaction.
-   * @param queryReference The transaction ID or conversation ID to query.
-   * @param thirdPartyReference A third-party reference for the query.
-   * @returns M-Pesa API response with the transaction status.
+   * @param args Object containing queryReference, thirdPartyReference
+   * @returns Clean, readable M-Pesa response with the transaction status.
    * @throws MpesaError if the query fails.
    */
-  public async queryTransactionStatus(
-    queryReference: string,
-    thirdPartyReference: string
-  ): Promise<MpesaQueryResponse> {
+  public async query(args: QueryArgs): Promise<MpesaResponse<QueryResponseData>> {
     const payload: QueryPaymentPayload = {
-      input_QueryReference: queryReference,
+      input_QueryReference: args.queryReference,
       input_ServiceProviderCode: this.config.serviceProviderCode,
-      input_ThirdPartyReference: thirdPartyReference,
+      input_ThirdPartyReference: args.thirdPartyReference,
     };
 
     try {
@@ -279,9 +322,19 @@ export class MpesaService {
         }
       });
 
+      // Verificar se a resposta é de sucesso
       if (response.data.output_ResponseCode === 'INS-0') {
-        return response.data;
+        return this.transformResponse(response.data, 'Query', (data) => ({
+          transactionId: data.output_TransactionID || '',
+          conversationId: data.output_ConversationID || '',
+          thirdPartyReference: data.output_ThirdPartyReference || '',
+          queryReference: args.queryReference,
+          transactionStatus: (data as MpesaQueryResponse).output_ResponseTransactionStatus,
+          paymentStatusCode: (data as MpesaQueryResponse).output_ResponsePaymentStatusCode,
+          paymentStatusDesc: (data as MpesaQueryResponse).output_ResponsePaymentStatusDesc
+        }));
       } else {
+        // Lançar erro para respostas não bem-sucedidas
         this.handleMpesaError({ response: { status: response.status, data: response.data } } as AxiosError<MpesaBaseResponse>, 'Query');
       }
     } catch (error: any) {
@@ -291,21 +344,15 @@ export class MpesaService {
 
   /**
    * Reverses an M-Pesa transaction.
-   * @param originalTransactionId The ID of the original transaction to be reversed.
-   * @param reversalAmount The amount to be reversed.
-   * @param thirdPartyReference A third-party reference for the reversal.
-   * @returns M-Pesa API response for the reversal.
+   * @param args Object containing originalTransactionId, reversalAmount, thirdPartyReference
+   * @returns Clean, readable M-Pesa response for the reversal.
    * @throws MpesaError if the reversal fails.
    */
-  public async reverseTransaction(
-    originalTransactionId: string,
-    reversalAmount: number,
-    thirdPartyReference: string
-  ): Promise<MpesaReversalResponse> {
+  public async reversal(args: ReversalArgs): Promise<MpesaResponse<ReversalResponseData>> {
     const payload: ReversalPaymentPayload = {
-      input_ReversalAmount: reversalAmount.toFixed(2),
-      input_TransactionID: originalTransactionId,
-      input_ThirdPartyReference: thirdPartyReference,
+      input_ReversalAmount: args.reversalAmount.toFixed(2),
+      input_TransactionID: args.originalTransactionId,
+      input_ThirdPartyReference: args.thirdPartyReference,
       input_ServiceProviderCode: this.config.serviceProviderCode,
     };
 
@@ -318,9 +365,17 @@ export class MpesaService {
         }
       });
 
+      // Verificar se a resposta é de sucesso
       if (response.data.output_ResponseCode === 'INS-0') {
-        return response.data;
+        return this.transformResponse(response.data, 'Reversal', (data) => ({
+          transactionId: data.output_TransactionID || '',
+          conversationId: data.output_ConversationID || '',
+          thirdPartyReference: data.output_ThirdPartyReference || '',
+          originalTransactionId: args.originalTransactionId,
+          reversalAmount: args.reversalAmount.toFixed(2)
+        }));
       } else {
+        // Lançar erro para respostas não bem-sucedidas
         this.handleMpesaError({ response: { status: response.status, data: response.data } } as AxiosError<MpesaBaseResponse>, 'Reversal');
       }
     } catch (error: any) {
