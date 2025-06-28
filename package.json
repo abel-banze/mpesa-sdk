@@ -1,6 +1,6 @@
 {
   "name": "mpesa-mz-sdk",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "SDK para integração com a API M-Pesa de Moçambique",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -19,6 +19,10 @@
     "typescript",
     "payments"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abel-banze/mpesa-sdk.git"
+  },
   "author": "",
   "license": "ISC",
   "dependencies": {

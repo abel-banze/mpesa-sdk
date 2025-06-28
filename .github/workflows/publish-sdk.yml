@@ -1,0 +1,46 @@
+# .github/workflows/publish-sdk.yml
+
+name: Publicar SDK no npm
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest # O runner onde o job será executado
+
+    steps:
+      # Passo 1: Faz o checkout do seu código do repositório
+      - name: Checkout do Código
+        uses: actions/checkout@v4
+
+      # Passo 2: Configura o Node.js
+      # Você pode especificar a versão do Node.js que seu SDK precisa
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18' # Ou '20', 'lts/*', etc.
+          registry-url: 'https://registry.npmjs.org/' # O registro do npm
+
+      # Passo 3: Instala as dependências do seu SDK
+      - name: Instalar Dependências
+        run: npm install
+
+      # Passo 4: Se o seu SDK precisa de build (ex: TypeScript, Babel)
+      # Remova ou comente esta etapa se não for necessário
+      - name: Compilar SDK
+        run: npm run build # Assumindo que você tem um script 'build' no package.json
+
+      # Passo 5: Executa os testes (altamente recomendado antes de publicar!)
+      # Remova ou comente esta etapa se não for necessário
+      - name: Rodar Testes
+        run: npm test
+
+      # Passo 6: Publica o pacote no npm
+      # Este passo só será executado se os passos anteriores (build, teste) passarem
+      - name: Publicar no npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }} # Usa o token npm que você salvou como secret
