@@ -16,7 +16,7 @@ export interface MpesaAPIConfig {
   publicKey: string;
   serviceProviderCode: string;
   origin: string;
-  apiHost: string; // e.g., "api.sandbox.vm.co.mz:18352" or "api.vm.co.mz:18352"
+  apiHost?: string; // Opcional, definido automaticamente pelo ambiente
   timeout?: number; // Request timeout in ms
   env?: 'sandbox' | 'live'; // Novo campo para ambiente
 }
@@ -104,4 +104,143 @@ export interface B2BPaymentPayload {
   input_TransactionReference: string;
   input_ServiceProviderCode: string;
   input_PaymentServices: string; // Ex: "BusinessToBusinessTransfer"
+}
+
+// --- Respostas Simplificadas e Legíveis ---
+export interface MpesaResponse<T = any> {
+  status: 'success' | 'error';
+  message: string;
+  data?: T;
+  code?: string;
+  httpStatus?: number;
+  transactionId?: string;
+  conversationId?: string;
+  thirdPartyReference?: string;
+  timestamp?: string;
+}
+
+export interface C2BResponseData {
+  transactionId: string;
+  conversationId: string;
+  thirdPartyReference: string;
+  amount: string;
+  customerMsisdn: string;
+  transactionReference: string;
+}
+
+export interface B2CResponseData {
+  transactionId: string;
+  conversationId: string;
+  thirdPartyReference: string;
+  amount: string;
+  customerMsisdn: string;
+  transactionReference: string;
+  recipientFirstName?: string;
+  recipientLastName?: string;
+  settlementAmount?: string;
+}
+
+export interface B2BResponseData {
+  transactionId: string;
+  conversationId: string;
+  thirdPartyReference: string;
+  amount: string;
+  primaryPartyCode: string;
+  recipientPartyCode: string;
+  transactionReference: string;
+  settlementAmount?: string;
+}
+
+export interface QueryResponseData {
+  transactionId: string;
+  conversationId: string;
+  thirdPartyReference: string;
+  queryReference: string;
+  transactionStatus?: string;
+  paymentStatusCode?: string;
+  paymentStatusDesc?: string;
+}
+
+export interface ReversalResponseData {
+  transactionId: string;
+  conversationId: string;
+  thirdPartyReference: string;
+  originalTransactionId: string;
+  reversalAmount: string;
+}
+
+// --- Mapeamento de Códigos de Erro M-Pesa ---
+export const MPESA_ERROR_MESSAGES: Record<string, string> = {
+  // Códigos de Sucesso
+  'INS-0': 'Request processed successfully',
+  
+  // Códigos de Erro da API M-Pesa (Documentação Oficial)
+  'INS-1': 'Internal Error',
+  'INS-2': 'Invalid API Key',
+  'INS-4': 'User is not active',
+  'INS-5': 'Transaction cancelled by customer',
+  'INS-6': 'Transaction Failed',
+  'INS-9': 'Request timeout',
+  'INS-10': 'Duplicate Transaction',
+  'INS-13': 'Invalid Shortcode Used',
+  'INS-14': 'Invalid Reference Used',
+  'INS-15': 'Invalid Amount Used',
+  'INS-16': 'Unable to handle the request due to a temporary overloading',
+  'INS-17': 'Invalid Transaction Reference. Length Should Be Between 1 and 20.',
+  'INS-18': 'Invalid TransactionID Used',
+  'INS-19': 'Invalid ThirdPartyReference Used',
+  'INS-20': 'Not All Parameters Provided. Please try again.',
+  'INS-21': 'Parameter validations failed. Please try again.',
+  'INS-22': 'Invalid Operation Type',
+  'INS-23': 'Unknown Status. Contact M-Pesa Support',
+  'INS-24': 'Invalid InitiatorIdentifier Used',
+  'INS-25': 'Invalid SecurityCredential Used',
+  'INS-26': 'Not authorized',
+  'INS-993': 'Direct Debit Missing',
+  'INS-994': 'Direct Debit Already Exists',
+  'INS-995': 'Customer\'s Profile Has Problems',
+  'INS-996': 'Customer Account Status Not Active',
+  'INS-997': 'Linking Transaction Not Found',
+  'INS-998': 'Invalid Market',
+  'INS-2001': 'Initiator authentication error.',
+  'INS-2002': 'Receiver invalid.',
+  'INS-2006': 'Insufficient balance',
+  'INS-2051': 'Invalid number', // MSISDN invalid - usando "Invalid number" para ser mais claro
+  'INS-2057': 'Language code invalid.'
+};
+
+// --- Argumentos dos métodos ---
+export interface C2BArgs {
+  amount: number;
+  number: string; // MSISDN
+  transactionReference: string;
+  thirdPartyReference: string;
+}
+
+export interface B2CArgs {
+  amount: number;
+  number: string; // MSISDN
+  transactionReference: string;
+  thirdPartyReference: string;
+  paymentServices?: string;
+}
+
+export interface B2BArgs {
+  amount: number;
+  primaryPartyCode: string;
+  recipientPartyCode: string;
+  transactionReference: string;
+  thirdPartyReference: string;
+  paymentServices?: string;
+}
+
+export interface QueryArgs {
+  queryReference: string;
+  thirdPartyReference: string;
+}
+
+export interface ReversalArgs {
+  originalTransactionId: string;
+  reversalAmount: number;
+  thirdPartyReference: string;
 }
