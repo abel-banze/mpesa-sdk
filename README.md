@@ -16,7 +16,7 @@ Um SDK robusto e completo para integração com a API M-Pesa da Vodacom em Moça
 ## 📦 Instalação
 
 ```bash
-npm install mpesa-sdk-mozambique
+npm install mpesa-mz-sdk
 ```
 
 ## ⚙️ Configuração
@@ -377,9 +377,8 @@ Contribuições são bem-vindas! Por favor:
 
 Para suporte e dúvidas:
 
-- 📧 Email: suporte@exemplo.com
-- 📖 Documentação: [docs.exemplo.com](https://docs.exemplo.com)
-- 🐛 Issues: [GitHub Issues](https://github.com/seu-usuario/mpesa-sdk-mozambique/issues)
+- 📧 Email: abelbartolomeu06@gmail.com
+- 🐛 Issues: [GitHub Issues](https://github.com/abel-banze/mpesa-mz-sdk/issues)
 
 ---
 
